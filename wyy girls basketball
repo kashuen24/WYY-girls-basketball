@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>女籃點名系統（雲端多人同步版）</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --unlocked-bg: #27ae60;
+            --locked-bg: #7f8c8d;
+            --present: #2ecc71;
+            --leave-doc: #16a085;
+            --leave-nodoc: #d68910;
+            --sick: #e74c3c;
+            --late: #e67e22;
+            --slash: #5d6d7e;
+            --absent: #922b21;
+            --bg: #f4f6f9;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang HK", "Microsoft JhengHei", sans-serif;
+            background: var(--bg);
+            margin: 0;
+            padding: 12px;
+            padding-bottom: 30px;
+        }
+        h2 {
+            text-align: center;
+            color: #2c3e50;
+            margin: 0 0 10px 0;
+            font-size: 1.25rem;
+        }
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            border: none;
+            padding: 8px 13px;
+            border-radius: 6px;
+            font-size: 0.84rem;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn-sync { background: #27ae60; }
+        .btn-lock-all { background: #34495e; }
+        .btn-export { background: #2980b9; }
+        .btn-config { background: #8e44ad; }
+        .btn:active { transform: scale(0.97); }
+
+        .sync-status-bar {
+            text-align: center;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            background: #eafaf1;
+            color: #1e8449;
+            border: 1px solid #a9dfbf;
+        }
+        .sync-status-bar.syncing {
+            background: #fef5e7;
+            color: #b9770e;
+            border: 1px solid #f5cba7;
+        }
+        .sync-status-bar.offline {
+            background: #fdedec;
+            color: #922b21;
+            border: 1px solid #f5b7b1;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 10px;
+            font-size: 0.78rem;
+            flex-wrap: wrap;
+        }
+        .legend span {
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+        }
+        .tip {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #555;
+            margin-bottom: 10px;
+            background: #e8f4fd;
+            padding: 6px 10px;
+            border-radius: 6px;
+            line-height: 1.45;
+        }
+        .table-container {
+            overflow-x: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            max-height: 72vh;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+            font-size: 0.9rem;
+        }
+        th, td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 6px;
+            text-align: center;
+        }
+        th {
+            background: var(--primary);
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        th.date-header {
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+            min-width: 96px;
+        }
+        th.date-header.locked {
+            background: var(--locked-bg);
+        }
+        th.date-header.unlocked {
+            background: var(--unlocked-bg);
+        }
+        .lock-badge {
+            display: block;
+            font-size: 0.72rem;
+            margin-top: 3px;
+            font-weight: normal;
+            opacity: 0.95;
+        }
+        .student-name {
+            position: sticky;
+            left: 0;
+            background: #f1f8ff;
+            font-weight: bold;
+            z-index: 5;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.05);
+        }
+        th.student-name {
+            background: var(--primary);
+            z-index: 15;
+        }
+        .phone-cell a {
+            color: #2980b9;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .phone-cell a:hover {
+            text-decoration: underline;
+        }
+        .status-cell {
+            font-weight: bold;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        .status-cell.cell-unlocked {
+            cursor: pointer;
+            background-color: #fcfffd;
+        }
+        .status-cell.cell-locked {
+            cursor: not-allowed;
+            background-color: #f5f5f5;
+            opacity: 0.85;
+        }
+        .status-present { background-color: #eafaf1 !important; color: var(--present); }
+        .status-leave-doc { background-color: #e8f8f5 !important; color: var(--leave-doc); font-size: 0.78rem; }
+        .status-leave-nodoc { background-color: #fef9e7 !important; color: var(--leave-nodoc); font-size: 0.78rem; }
+        .status-sick { background-color: #fdedec !important; color: var(--sick); }
+        .status-late { background-color: #fdf2e9 !important; color: var(--late); }
+        .status-slash { background-color: #eaecee !important; color: var(--slash); }
+        .status-absent { background-color: #fadbd8 !important; color: var(--absent); }
+
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(44, 62, 80, 0.94);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 25px;
+            font-size: 0.85rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 100;
+            white-space: nowrap;
+        }
+        #toast.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <h2>🏀 女籃點名系統</h2>
+
+    <div class="tip">
+        💡 <b>雲端多人協作：</b>點擊頂部日期解鎖（變綠色 🔓）即可點名，<b>每次點擊會自動上傳至雲端</b>並即時同步給其他使用者；點名完畢可按「🔒 全部鎖定」防誤觸。
+    </div>
+
+    <div class="toolbar">
+        <button class="btn btn-sync" onclick="fetchLatestFromCloud(true)">🔄 立即重新整理</button>
+        <button class="btn btn-lock-all" onclick="lockAllDates()">🔒 全部鎖定</button>
+        <button class="btn btn-export" onclick="exportCSV()">📥 匯出 Excel</button>
+        <button class="btn btn-config" onclick="configureCloudUrl()">☁️ 雲端設定</button>
+    </div>
+
+    <div id="syncStatusBar" class="sync-status-bar syncing">
+        ⏳ 正在連線至雲端讀取最新點名紀錄...
+    </div>
+
+    <div class="legend">
+        <span style="background: var(--present);">✔ 出席</span>
+        <span style="background: var(--leave-doc);">請假(已交證明)</span>
+        <span style="background: var(--leave-nodoc);">請假(未交證明)</span>
+        <span style="background: var(--sick);">傷 病/傷</span>
+        <span style="background: var(--late);">遲 遲到</span>
+        <span style="background: var(--slash);">/</span>
+        <span style="background: var(--absent);">X</span>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr id="headerRow">
+                    <th>班別</th>
+                    <th>學號</th>
+                    <th class="student-name">姓名</th>
+                </tr>
+            </thead>
+            <tbody id="studentList"></tbody>
+        </table>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        // ★ 請將你的 Firebase Realtime Database 網址貼在下方雙引號內（所有開啟此網頁的人便會自動連線）
+        const FIREBASE_DB_URL = "";
+
+        const students = [
+            {"班別": "1A", "學號": "30", "學生姓名": "葉梓瑜", "家長電話": "54067299"},
+            {"班別": "1B", "學號": "21", "學生姓名": "蘇芷葵", "家長電話": "97881972"},
+            {"班別": "1B", "學號": "29", "學生姓名": "謝嘉兒", "家長電話": "66217444"},
+            {"班別": "2A", "學號": "4", "學生姓名": "陳韻晞", "家長電話": "90123820"},
+            {"班別": "2B", "學號": "17", "學生姓名": "劉語翹", "家長電話": "62286397"},
+            {"班別": "2C", "學號": "21", "學生姓名": "盧晞嵐", "家長電話": "93479040"},
+            {"班別": "2D", "學號": "23", "學生姓名": "陸沛昕", "家長電話": "98469880"},
+            {"班別": "3A", "學號": "1", "學生姓名": "陳皓晴", "家長電話": "64349782"},
+            {"班別": "3B", "學號": "16", "學生姓名": "劉悅", "家長電話": "59018333"},
+            {"班別": "3C", "學號": "23", "學生姓名": "陸沛晴", "家長電話": "98469880"},
+            {"班別": "3D", "學號": "5", "學生姓名": "張曉彤", "家長電話": "68564399"},
+            {"班別": "3D", "學號": "26", "學生姓名": "蘇心綽", "家長電話": "63818928"},
+            {"班別": "4B", "學號": "16", "學生姓名": "梁穎欣", "家長電話": "56910633"},
+            {"班別": "4B", "學號": "29", "學生姓名": "黃梓晴", "家長電話": "93863339"},
+            {"班別": "4C", "學號": "7", "學生姓名": "周芷翹", "家長電話": "63509733"},
+            {"班別": "5B", "學號": "19", "學生姓名": "羅梓昕", "家長電話": "57672678"},
+            {"班別": "5C", "學號": "16", "學生姓名": "黃曉祈", "家長電話": "97180548"},
+            {"班別": "6B", "學號": "20", "學生姓名": "謝瑞君", "家長電話": "51642621"},
+            {"班別": "4C", "學號": "4", "學生姓名": "陳芯儀", "家長電話": "64173636"},
+            {"班別": "6B", "學號": "16", "學生姓名": "林家慧", "家長電話": "52225082"}
+        ];
+
+        const dates = ["09-14", "09-16", "09-21", "09-23", "10-05", "10-12", "10-14", "10-21", "10-26", "11-16", "11-18", "11-23", "11-25", "11-30"];
+
+        const statusCycle = [
+            { text: "", class: "" },
+            { text: "✔", class: "status-present" },
+            { text: "請假(已交證明)", class: "status-leave-doc" },
+            { text: "請假(未交證明)", class: "status-leave-nodoc" },
+            { text: "傷", class: "status-sick" },
+            { text: "遲", class: "status-late" },
+            { text: "/", class: "status-slash" },
+            { text: "X", class: "status-absent" }
+        ];
+
+        const STORAGE_KEY_DATA = "bb_attendance_data_2627";
+        const STORAGE_KEY_LOCKS = "bb_attendance_locks_2627";
+        const STORAGE_KEY_CLOUD_URL = "bb_firebase_url_2627";
+        const CLOUD_NODE = "basketball_attendance_2627";
+
+        let attendanceData = {};
+        let lockedDates = dates.map(() => true);
+        let eventSource = null;
+        let pendingUploads = 0;
+
+        try {
+            const rawData = localStorage.getItem(STORAGE_KEY_DATA);
+            if (rawData) {
+                attendanceData = JSON.parse(rawData);
+            }
+            const savedLocks = JSON.parse(localStorage.getItem(STORAGE_KEY_LOCKS) || "null");
+            if (Array.isArray(savedLocks) && savedLocks.length === dates.length) {
+                lockedDates = savedLocks;
+            }
+        } catch (e) {
+            console.warn("Storage unavailable:", e);
+        }
+
+        function getCloudBaseUrl() {
+            const raw = (FIREBASE_DB_URL || localStorage.getItem(STORAGE_KEY_CLOUD_URL) || "").trim();
+            if (!raw) return "";
+            return raw.replace(/\/+$/, "") + "/" + CLOUD_NODE;
+        }
+
+        function formatNow() {
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, "0");
+            return pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+        }
+
+        function setSyncStatus(state, text) {
+            const bar = document.getElementById("syncStatusBar");
+            bar.className = "sync-status-bar" + (state ? " " + state : "");
+            bar.textContent = text;
+        }
+
+        let toastTimer = null;
+        function showToast(msg) {
+            const toast = document.getElementById("toast");
+            toast.textContent = msg;
+            toast.classList.add("show");
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.remove("show"), 2400);
+        }
+
+        function saveLocalCache() {
+            try {
+                localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(attendanceData));
+                localStorage.setItem(STORAGE_KEY_LOCKS, JSON.stringify(lockedDates));
+            } catch (e) {
+                console.warn("Local cache failed:", e);
+            }
+        }
+
+        async function uploadCellToCloud(key, val) {
+            const baseUrl = getCloudBaseUrl();
+            if (!baseUrl) {
+                setSyncStatus("offline", "⚠️ 尚未設定雲端網址（目前僅儲存在本機，請按右上角「☁️ 雲端設定」）");
+                return;
+            }
+
+            pendingUploads++;
+            setSyncStatus("syncing", "🟡 正在自動上傳至雲端...");
+
+            try {
+                const res = await fetch(baseUrl + "/" + encodeURIComponent(key) + ".json", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(val === 0 ? null : val)
+                });
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                pendingUploads = Math.max(0, pendingUploads - 1);
+                if (pendingUploads === 0) {
+                    setSyncStatus("", "✅ 已自動上傳並與雲端同步（" + formatNow() + "）");
+                }
+            } catch (err) {
+                pendingUploads = Math.max(0, pendingUploads - 1);
+                setSyncStatus("offline", "❌ 自動上傳失敗（請檢查網絡或資料庫權限），紀錄已暫存本機");
+                showToast("⚠️ 網絡不穩，上傳失敗");
+                console.error("Upload error:", err);
+            }
+        }
+
+        async function uploadFullSnapshotToCloud() {
+            const baseUrl = getCloudBaseUrl();
+            if (!baseUrl) return;
+            try {
+                await fetch(baseUrl + ".json", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(attendanceData)
+                });
+            } catch (e) {
+                console.error("Initial snapshot upload failed:", e);
+            }
+        }
+
+        async function fetchLatestFromCloud(manual = false) {
+            const baseUrl = getCloudBaseUrl();
+            if (!baseUrl) {
+                setSyncStatus("offline", "⚠️ 尚未設定雲端網址（目前僅儲存在本機，請按右上角「☁️ 雲端設定」）");
+                return;
+            }
+
+            setSyncStatus("syncing", "⏳ 正在從雲端讀取最新紀錄...");
+            try {
+                const res = await fetch(baseUrl + ".json?t=" + Date.now(), { cache: "no-store" });
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const cloudData = await res.json();
+
+                if (cloudData === null && Object.keys(attendanceData).length > 0) {
+                    await uploadFullSnapshotToCloud();
+                } else {
+                    const cleaned = {};
+                    if (cloudData && typeof cloudData === "object") {
+                        for (const [k, v] of Object.entries(cloudData)) {
+                            if (typeof v === "number" && v > 0 && v < statusCycle.length) {
+                                cleaned[k] = v;
+                            }
+                        }
+                    }
+                    attendanceData = cleaned;
+                    saveLocalCache();
+                    renderTable();
+                }
+
+                setSyncStatus("", "🟢 雲端即時同步已連線（最新更新：" + formatNow() + "）");
+                if (manual) showToast("✅ 已從雲端載入最新紀錄");
+            } catch (err) {
+                setSyncStatus("offline", "❌ 無法連線至雲端，目前顯示本機暫存紀錄");
+                if (manual) showToast("❌ 連線失敗，請檢查網絡或雲端網址");
+                console.error("Fetch cloud failed:", err);
+            }
+        }
+
+        function startRealtimeStream() {
+            const baseUrl = getCloudBaseUrl();
+            if (!baseUrl || typeof EventSource === "undefined") return;
+
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            try {
+                eventSource = new EventSource(baseUrl + ".json");
+
+                eventSource.addEventListener("put", (e) => {
+                    try {
+                        const msg = JSON.parse(e.data);
+                        if (msg.path === "/") {
+                            const cleaned = {};
+                            if (msg.data && typeof msg.data === "object") {
+                                for (const [k, v] of Object.entries(msg.data)) {
+                                    if (typeof v === "number" && v > 0 && v < statusCycle.length) {
+                                        cleaned[k] = v;
+                                    }
+                                }
+                            }
+                            attendanceData = cleaned;
+                        } else {
+                            const key = msg.path.replace(/^\//, "");
+                            if (msg.data === null || msg.data === 0) {
+                                delete attendanceData[key];
+                            } else if (typeof msg.data === "number") {
+                                attendanceData[key] = msg.data;
+                            }
+                        }
+                        saveLocalCache();
+                        renderTable();
+                        if (pendingUploads === 0) {
+                            setSyncStatus("", "🟢 雲端即時同步中（最新變動：" + formatNow() + "）");
+                        }
+                    } catch (err) {
+                        console.warn("SSE put parse error:", err);
+                    }
+                });
+
+                eventSource.addEventListener("patch", (e) => {
+                    try {
+                        const msg = JSON.parse(e.data);
+                        if (msg.path === "/" && msg.data && typeof msg.data === "object") {
+                            for (const [k, v] of Object.entries(msg.data)) {
+                                if (v === null || v === 0) {
+                                    delete attendanceData[k];
+                                } else if (typeof v === "number") {
+                                    attendanceData[k] = v;
+                                }
+                            }
+                            saveLocalCache();
+                            renderTable();
+                            if (pendingUploads === 0) {
+                                setSyncStatus("", "🟢 雲端即時同步中（最新變動：" + formatNow() + "）");
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("SSE patch parse error:", err);
+                    }
+                });
+            } catch (e) {
+                console.warn("EventSource unavailable:", e);
+            }
+        }
+
+        function configureCloudUrl() {
+            const current = FIREBASE_DB_URL || localStorage.getItem(STORAGE_KEY_CLOUD_URL) || "";
+            const input = prompt(
+                "請貼上 Firebase Realtime Database 網址：\n（建議亦直接填入程式碼的 FIREBASE_DB_URL，讓所有開啟網址的人自動連線）",
+                current
+            );
+            if (input === null) return;
+            const trimmed = input.trim();
+            if (trimmed && !trimmed.startsWith("https://")) {
+                alert("網址必須以 https:// 開頭");
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY_CLOUD_URL, trimmed);
+            fetchLatestFromCloud(true);
+            startRealtimeStream();
+        }
+
+        function renderTable() {
+            const headerRow = document.getElementById("headerRow");
+            headerRow.innerHTML = '<th>班別</th><th>學號</th><th class="student-name">姓名</th>';
+
+            dates.forEach((date, dIdx) => {
+                const th = document.createElement("th");
+                const isLocked = lockedDates[dIdx];
+                th.className = "date-header " + (isLocked ? "locked" : "unlocked");
+                th.innerHTML = date + '<span class="lock-badge">' + (isLocked ? "🔒 已鎖定" : "🔓 點名中") + '</span>';
+                th.onclick = () => toggleDateLock(dIdx);
+                headerRow.appendChild(th);
+            });
+
+            const phoneTh = document.createElement("th");
+            phoneTh.textContent = "家長電話";
+            headerRow.appendChild(phoneTh);
+
+            const tbody = document.getElementById("studentList");
+            tbody.innerHTML = "";
+
+            students.forEach((student, sIdx) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td>' + student["班別"] + '</td><td>' + student["學號"] + '</td><td class="student-name">' + student["學生姓名"] + '</td>';
+
+                dates.forEach((date, dIdx) => {
+                    const td = document.createElement("td");
+                    const key = sIdx + "_" + dIdx;
+                    const statusIdx = attendanceData[key] || 0;
+                    const isLocked = lockedDates[dIdx];
+
+                    td.className = "status-cell " + (isLocked ? "cell-locked" : "cell-unlocked") + " " + statusCycle[statusIdx].class;
+                    td.textContent = statusCycle[statusIdx].text;
+
+                    td.onclick = () => {
+                        if (lockedDates[dIdx]) {
+                            showToast("🔒 " + date + " 已鎖定，請先點擊上方日期解鎖");
+                            return;
+                        }
+                        const nextIdx = (statusIdx + 1) % statusCycle.length;
+                        if (nextIdx === 0) {
+                            delete attendanceData[key];
+                        } else {
+                            attendanceData[key] = nextIdx;
+                        }
+                        saveLocalCache();
+                        renderTable();
+                        uploadCellToCloud(key, nextIdx);
+                    };
+                    tr.appendChild(td);
+                });
+
+                const phoneTd = document.createElement("td");
+                phoneTd.className = "phone-cell";
+                if (student["家長電話"]) {
+                    const a = document.createElement("a");
+                    a.href = "tel:" + student["家長電話"];
+                    a.textContent = student["家長電話"];
+                    phoneTd.appendChild(a);
+                }
+                tr.appendChild(phoneTd);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function toggleDateLock(dIdx) {
+            lockedDates[dIdx] = !lockedDates[dIdx];
+            saveLocalCache();
+            renderTable();
+            if (lockedDates[dIdx]) {
+                showToast("🔒 " + dates[dIdx] + " 已鎖定");
+            } else {
+                showToast("🔓 " + dates[dIdx] + " 已解鎖，點擊格子會自動上傳");
+            }
+        }
+
+        function lockAllDates() {
+            lockedDates = dates.map(() => true);
+            saveLocalCache();
+            renderTable();
+            showToast("🔒 已將所有日期全部鎖定");
+        }
+
+        function exportCSV() {
+            const newline = String.fromCharCode(10);
+            let csv = "\uFEFF班別,學號,學生姓名," + dates.join(",") + ",家長電話" + newline;
+            students.forEach((student, sIdx) => {
+                const row = [student["班別"], student["學號"], student["學生姓名"]];
+                dates.forEach((_, dIdx) => {
+                    const statusIdx = attendanceData[sIdx + "_" + dIdx] || 0;
+                    row.push(statusCycle[statusIdx].text);
+                });
+                row.push(student["家長電話"] || "");
+                csv += row.join(",") + newline;
+            });
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "女籃點名紀錄_9至11月.csv";
+            link.click();
+            showToast("📥 已匯出 Excel (CSV) 備份檔");
+        }
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                fetchLatestFromCloud(false);
+            }
+        });
+
+        renderTable();
+        fetchLatestFromCloud(false);
+        startRealtimeStream();
+    </script>
+</body>
+</html>
