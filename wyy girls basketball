@@ -252,7 +252,7 @@
 
     <script>
         // ★ 請將你的 Firebase Realtime Database 網址貼在下方雙引號內（所有開啟此網頁的人便會自動連線）
-        const FIREBASE_DB_URL = "";
+        const FIREBASE_DB_URL = "https://wyy-girls-basketball-default-rtdb.firebaseio.com/";
 
         const students = [
             {"班別": "1A", "學號": "30", "學生姓名": "葉梓瑜", "家長電話": "54067299"},
